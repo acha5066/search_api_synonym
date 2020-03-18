@@ -143,7 +143,13 @@ class ExportPluginManager extends DefaultPluginManager {
       // Get data in the plugin instance format
       $data = $instance->getFormattedSynonyms($synonyms);
 
-      return $this->saveSynonymsFile($data);
+      if (!$this->getExportOption('write_file') && method_exists($instance, 'performExport')) {
+        $export_options = $this->getExportOption('plugin_specific');
+        $instance->performExport($data, $export_options);
+      }
+      else {
+        return $this->saveSynonymsFile($data);
+      }
     }
     else {
       return FALSE;

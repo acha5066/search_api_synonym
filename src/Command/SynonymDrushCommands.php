@@ -42,14 +42,18 @@ class SynonymDrushCommands extends DrushCommands {
    * @option filter Export filter. Allowed values: nospace = Skip all words containing a space, onlyspace = Skip all words without a space. Defaults to "all".
    * @option incremental Incremental export - use Unix timestamp. Only export synonyms changed after the provided timestamp.
    * @option file File name used when saving the exported file. Include extension but not folder name!.
+   * @option write_file Write a file or not, defaults to yes.
+   * @option plugin_specific Additional plugin specific export options, comma seperated.
    * @aliases sapi-syn:export, sapi-syn-ex
    * @validate-module-enabled search_api_synonym
    * @usage drush search-api-synonym:export --plugin=solr langcode=da type=spelling_error filter=all
    *   Export all Danish spelling errors in the Solr format.
    * @usage sapi-syn:export --plugin=solr langcode=da type=spelling_error filter=all
    *   Export all Danish spelling errors in the Solr format.
+   * @usage sapi-syn:export --plugin=solr_api --write_file=0 --langcode=nl --plugin_specific=solr,dutch
+   *   Export all dutch synonyms to the solr API synonyms API.
    */
-  public function export($options = ['plugin' => '', 'langcode' => '', 'type' => 'all', 'filter' => 'all', 'incremental' => 0, 'file' => '']) {
+  public function export($options = ['plugin' => '', 'langcode' => '', 'type' => 'all', 'filter' => 'all', 'incremental' => 0, 'file' => '', 'write_file' => 1, 'plugin_specific' => '']) {
     $error = FALSE;
 
     // Validate option: plugin
@@ -81,6 +85,7 @@ class SynonymDrushCommands extends DrushCommands {
       $this->output()->writeln(dt('Starting synonym export....'));
 
       $options['incremental'] = (int) $options['incremental'];
+      $options['write_file'] = (int) $options['write_file'];
 
       $this->pluginManager->setPluginId($options['plugin']);
       $this->pluginManager->setExportOptions($options);

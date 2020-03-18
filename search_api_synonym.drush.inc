@@ -16,6 +16,7 @@ function search_api_synonym_drush_command() {
     'examples' => [
       'drush search-api-synonym-export --plugin=solr langcode=da type=spelling_error filter=all' => dt('Export all Danish spelling errors in the Solr format.'),
       'drush sapi-syn-ex --plugin=solr langcode=da type=spelling_error filter=all' => dt('Export all Danish spelling errors in the Solr format.'),
+      'drush search-api-synonym-export --plugin=solr_api --write_file=0 --langcode=nl --plugin_specific=solr,dutch' => dt('Export all dutch synonyms to the solr API synonyms API')
     ],
     'options' => [
       'plugin' => dt('Machine name of the export plugin. E.g. solr.'),
@@ -23,7 +24,9 @@ function search_api_synonym_drush_command() {
       'type' => dt('Synonym type. Allowed values: synonym = Synomyms, spelling_error = Spelling errors, all = All types (synonyms and spelling errors). Defaults to "alL".'),
       'filter' => dt('Export filter. Allowed values: nospace = Skip all words containing a space, onlyspace = Skip all words without a space. Defaults to "all".'),
       'incremental' => dt('Incremental export - use Unix timestamp. Only export synonyms changed after the provided timestamp.'),
+      'write_file' => dt('Write a file or not, defaults to yes'),
       'file' => dt('File name used when saving the exported file. Include extension but not folder name!.'),
+      'plugin_specific' => dt('additional plugin specific export options, comma seperated')
     ],
     'aliases' => ['sapi-syn-ex'],
   ];
@@ -43,8 +46,10 @@ function drush_search_api_synonym_export() {
   $langcode = drush_get_option('langcode');
   $type = drush_get_option('type', 'all');
   $filter = drush_get_option('filter', 'all');
+  $write_file = drush_get_option('write_file', 1);
   $file = drush_get_option('file');
   $incremental = drush_get_option('incremental');
+  $plugin_specific = drush_get_option('plugin_specific', '');
 
   // Validate option: plugin
   if (!$pluginManager->validatePlugin($plugin)) {
@@ -80,6 +85,8 @@ function drush_search_api_synonym_export() {
       'filter' => $filter,
       'file' => $file,
       'incremental' => (int) $incremental,
+      'write_file' => (int) $write_file,
+      'plugin_specific' => $plugin_specific,
     ];
     $pluginManager->setPluginId($plugin);
     $pluginManager->setExportOptions($options);
