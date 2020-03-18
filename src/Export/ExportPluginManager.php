@@ -132,7 +132,9 @@ class ExportPluginManager extends DefaultPluginManager {
    *   Export result
    */
   public function executeExport() {
-    // Export plugin instance
+
+    // Export plugin instance.
+    /** @var \Drupal\search_api_synonym\Export\ExportPluginInterface $instance */
     $instance = $this->createInstance($this->getPluginId(), []);
 
     // Get synonyms data matching the options.
@@ -140,12 +142,12 @@ class ExportPluginManager extends DefaultPluginManager {
 
     // We only export if full export or if their is new synonyms.
     if (!($this->getExportOption('incremental') && empty($synonyms))) {
-      // Get data in the plugin instance format
+      // Get data in the plugin instance format.
       $data = $instance->getFormattedSynonyms($synonyms);
 
-      if (!$this->getExportOption('write_file') && method_exists($instance, 'performExport')) {
+      if (!$this->getExportOption('write_file') && $instance instanceof ApiExporterInterface) {
         $export_options = $this->getExportOption('plugin_specific');
-        $instance->performExport($data, $export_options);
+        $instance->exportToApi($data, $export_options);
       }
       else {
         return $this->saveSynonymsFile($data);

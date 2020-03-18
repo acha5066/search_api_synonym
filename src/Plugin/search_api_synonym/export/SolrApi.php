@@ -2,11 +2,15 @@
 
 namespace Drupal\search_api_synonym\Plugin\search_api_synonym\export;
 
-use Drupal\Component\Serialization\Json;
+use Drupal\Core\Config\ConfigFactoryInterface;
 use Drupal\search_api\Entity\Server;
+use Drupal\search_api_solr\SolrConnectorInterface;
+use Drupal\search_api_synonym\Export\ApiExporterInterface;
 use Drupal\search_api_synonym\Export\ExportPluginBase;
 use Drupal\search_api_synonym\Export\ExportPluginInterface;
 use Drush\Log\LogLevel;
+use GuzzleHttp\Client;
+use Symfony\Component\DependencyInjection\ContainerInterface;
 
 /**
  * Provides a synonym export plugin for Apache Solr (API).
@@ -17,7 +21,41 @@ use Drush\Log\LogLevel;
  *   description = @Translation("Synonym export plugin for Apache Solr (API)")
  * )
  */
-class SolrApi extends ExportPluginBase implements ExportPluginInterface {
+class SolrApi extends ExportPluginBase implements ExportPluginInterface, ApiExporterInterface {
+
+  /**
+   * The httpClient plugin.
+   *
+   * @var \GuzzleHttp\Client
+   */
+  protected $httpClient;
+
+  /**
+   * {@inheritDoc}
+   */
+  public function __construct(
+    array $configuration,
+    $plugin_id,
+    array $plugin_definition,
+    ConfigFactoryInterface $config_factory,
+    Client $httpClient
+  ) {
+    parent::__construct($configuration, $plugin_id, $plugin_definition, $config_factory);
+    $this->httpClient = $httpClient;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public static function create(ContainerInterface $container, array $configuration, $plugin_id, $plugin_definition) {
+    return new static(
+      $configuration,
+      $plugin_id,
+      $plugin_definition,
+      $container->get('config.factory'),
+      $container->get('http_client')
+    );
+  }
 
   /**
    * {@inheritdoc}
@@ -37,49 +75,48 @@ class SolrApi extends ExportPluginBase implements ExportPluginInterface {
   }
 
   /**
-   * Performs export
+   * {@inheritDoc}
    */
-  public function performExport($data, $export_options) {
+  public function exportToApi($data, $export_options) {
     $options = explode(',', $export_options);
-    $solr_server = Server::load($options[0]);
-    if (!$solr_server) {
+    $solrServer = Server::load($options[0]);
+    if (!$solrServer) {
       drush_log('Backend not loaded.', LogLevel::ERROR);
       return;
     }
 
-    $solr_uri = $solr_server->getBackend()->getSolrConnector()->getServerLink()->getText();
-    $solr_configuration = $solr_server->getBackend()->getSolrConnector()->getConfiguration();
+    /** @var \Drupal\search_api_solr\SolrConnectorInterface $solrConnector */
+    $solrConnector = $solrServer->getBackend()->getSolrConnector();
 
-    // Delete the current synonyms
-    $solr_synonyms_uri = $solr_uri . $solr_configuration['core'] . '/schema/analysis/synonyms/' . $options['1'];
-    $this->resetStoredSynonyms($solr_synonyms_uri);
+    // Delete the current synonyms.
+    $this->resetStoredSynonyms($solrConnector, '/schema/analysis/synonyms/' . $options[1]);
 
-    // Store new items
-    $this->setStoredSynonyms($solr_synonyms_uri, $data);
+    // Store new items.
+    $this->setStoredSynonyms($solrConnector, '/schema/analysis/synonyms/' . $options[1], $data);
 
-    // Reload core
-    $reload_uri = $solr_uri . 'admin/cores';
-    $this->reloadCore($reload_uri, $solr_configuration['core']);
+    // Reload core.
+    $solrConnector->reloadCore();
 
     drush_log('Synonym export finished.', LogLevel::OK);
   }
 
   /**
-   * Fetches the current stored synonyms
+   * Reset stored synonyms.
    */
-  private function resetStoredSynonyms($uri) {
-    $client = \Drupal::httpClient();
+  private function resetStoredSynonyms(SolrConnectorInterface $solrConnector, $uri) {
 
-    // Fetch current items
-    $request = $client->get($uri);
-    $response = $request->getBody();
-    $decoded = Json::decode($response);
-    $items = array_keys($decoded['synonymMappings']['managedMap']);
+    // Fetch current items.
+    $response = $solrConnector->coreRestGet($uri);
+    $items = array_keys($response['synonymMappings']['managedMap']);
 
-    // Delete current items
+    // There is no delete method in SolrConnectorInterface, so
+    // we need to use the drupal client for delete.
+    $coreLink = $solrConnector->getCoreLink()->getText();
+
+    // Delete current items.
     foreach ($items as $item) {
       try {
-        $client->delete($uri . '/' . $item);
+        $this->httpClient->delete($coreLink . '/' . $uri . '/' . $item);
       }
       catch (Exception $e) {
         drush_log($e->getMessage(), LogLevel::ERROR);
@@ -88,27 +125,16 @@ class SolrApi extends ExportPluginBase implements ExportPluginInterface {
   }
 
   /**
-   * Fills the solr database with new synonyms
+   * Fills the solr database with new synonyms.
    */
-  private function setStoredSynonyms($uri, $data) {
-    $client = \Drupal::httpClient();
+  private function setStoredSynonyms(SolrConnectorInterface $solrConnector, $uri, $data) {
+
+    // There is no put method in SolrConnectorInterface, so
+    // we need to use the drupal client for put.
+    $coreLink = $solrConnector->getCoreLink()->getText();
 
     try {
-      $client->put($uri, ['json'    => $data]);
-    }
-    catch (Exception $e) {
-      drush_log($e->getMessage(), LogLevel::ERROR);
-    }
-  }
-
-  /**
-   * Reloads the config
-   */
-  private function reloadCore($uri, $core) {
-    $client = \Drupal::httpClient();
-
-    try {
-      $client->get($uri, ['query' => ['action' => 'RELOAD', 'core' => $core]]);
+      $this->httpClient->put($coreLink . '/' . $uri, ['json' => $data]);
     }
     catch (Exception $e) {
       drush_log($e->getMessage(), LogLevel::ERROR);

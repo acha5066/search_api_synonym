@@ -16,7 +16,7 @@ function search_api_synonym_drush_command() {
     'examples' => [
       'drush search-api-synonym-export --plugin=solr langcode=da type=spelling_error filter=all' => dt('Export all Danish spelling errors in the Solr format.'),
       'drush sapi-syn-ex --plugin=solr langcode=da type=spelling_error filter=all' => dt('Export all Danish spelling errors in the Solr format.'),
-      'drush search-api-synonym-export --plugin=solr_api --write_file=0 --langcode=nl --plugin_specific=solr,dutch' => dt('Export all dutch synonyms to the solr API synonyms API')
+      'drush search-api-synonym-export --plugin=solr_api --write_file=0 --langcode=nl --plugin_specific=solr,dutch' => dt('Export all dutch synonyms to the solr API synonyms API'),
     ],
     'options' => [
       'plugin' => dt('Machine name of the export plugin. E.g. solr.'),
@@ -26,7 +26,7 @@ function search_api_synonym_drush_command() {
       'incremental' => dt('Incremental export - use Unix timestamp. Only export synonyms changed after the provided timestamp.'),
       'write_file' => dt('Write a file or not, defaults to yes'),
       'file' => dt('File name used when saving the exported file. Include extension but not folder name!.'),
-      'plugin_specific' => dt('additional plugin specific export options, comma seperated')
+      'plugin_specific' => dt('additional plugin specific export options, comma seperated'),
     ],
     'aliases' => ['sapi-syn-ex'],
   ];
