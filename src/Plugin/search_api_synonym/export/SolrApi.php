@@ -3,6 +3,7 @@
 namespace Drupal\search_api_synonym\Plugin\search_api_synonym\export;
 
 use Drupal\Core\Config\ConfigFactoryInterface;
+use Drupal\facets\Exception\Exception;
 use Drupal\search_api\Entity\Server;
 use Drupal\search_api_solr\SolrConnectorInterface;
 use Drupal\search_api_synonym\Export\ApiExporterInterface;
@@ -10,6 +11,12 @@ use Drupal\search_api_synonym\Export\ExportPluginBase;
 use Drupal\search_api_synonym\Export\ExportPluginInterface;
 use Drush\Log\LogLevel;
 use GuzzleHttp\Client;
+use GuzzleHttp\Exception\RequestException;
+use Solarium\Exception\HttpException;
+use Solarium\QueryType\ManagedResources\Query\Synonyms\Command\Add;
+use Solarium\QueryType\ManagedResources\Query\Synonyms\Command\Delete;
+use Solarium\QueryType\ManagedResources\Query\Synonyms\Command\Exists;
+use Solarium\QueryType\ManagedResources\Query\Synonyms\Synonyms;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 
 /**
@@ -109,14 +116,34 @@ class SolrApi extends ExportPluginBase implements ExportPluginInterface, ApiExpo
     $response = $solrConnector->coreRestGet($uri);
     $items = array_keys($response['synonymMappings']['managedMap']);
 
-    // There is no delete method in SolrConnectorInterface, so
-    // we need to use the drupal client for delete.
-    $coreLink = $solrConnector->getCoreLink()->getText();
+    // There is no access to managed synonyms in SolrConnectorInterface, so
+    // we need to access solarium directly.
+    $configuration = $solrConnector->getConfiguration();
+    $solr = new \Solarium\Core\Client\Client(NULL);
+    $solr->createEndpoint($configuration + ['key' => 'search_api_solr'], TRUE);
+    $query = $solr->createManagedSynonyms();
+    $query->setName('english');
 
     // Delete current items.
     foreach ($items as $item) {
       try {
-        $this->httpClient->delete($coreLink . '/' . $uri . '/' . $item);
+
+        // Check if term exists.
+        $exists = new Exists();
+        $exists->setTerm(urlencode($item));
+        $query->setCommand($exists);
+        $solr->execute($query);
+
+        // Delete if term exists.
+        $delete = new Delete();
+        $delete->setTerm(urlencode($item));
+        $query->setCommand($delete);
+        $solr->execute($query);
+      }
+      catch (HttpException $e) {
+        if (404 !== $e->getCode()) {
+          drush_log($e->getMessage(), LogLevel::ERROR);
+        }
       }
       catch (Exception $e) {
         drush_log($e->getMessage(), LogLevel::ERROR);
@@ -127,17 +154,29 @@ class SolrApi extends ExportPluginBase implements ExportPluginInterface, ApiExpo
   /**
    * Fills the solr database with new synonyms.
    */
-  private function setStoredSynonyms(SolrConnectorInterface $solrConnector, $uri, $data) {
+  private function setStoredSynonyms(SolrConnectorInterface $solrConnector, $uri, array $items) {
 
-    // There is no put method in SolrConnectorInterface, so
-    // we need to use the drupal client for put.
-    $coreLink = $solrConnector->getCoreLink()->getText();
+    // There is no access to managed synonyms in SolrConnectorInterface, so
+    // we need to access solarium directly.
+    $configuration = $solrConnector->getConfiguration();
+    $solr = new \Solarium\Core\Client\Client(NULL);
+    $solr->createEndpoint($configuration + ['key' => 'search_api_solr'], TRUE);
+    $query = $solr->createManagedSynonyms();
+    $query->setName('english');
 
-    try {
-      $this->httpClient->put($coreLink . '/' . $uri, ['json' => $data]);
-    }
-    catch (Exception $e) {
-      drush_log($e->getMessage(), LogLevel::ERROR);
+    // Add items.
+    foreach ($items as $term => $search_api_synonyms) {
+      try {
+        $add = new Add();
+        $synonyms = new Synonyms();
+        $synonyms->setTerm($term);
+        $synonyms->setSynonyms($search_api_synonyms);
+        $add->setSynonyms($synonyms);
+        $query->setCommand($add);
+        $result = $solr->execute($query);
+      } catch (Exception $e) {
+        drush_log($e->getMessage(), LogLevel::ERROR);
+      }
     }
   }
 
